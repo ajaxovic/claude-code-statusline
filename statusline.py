@@ -29,6 +29,7 @@ def main():
         return
 
     # Extract fields
+    current_directory = data.get("cwd", "")
     model = data.get("model", {}).get("display_name", "")
 
     # Extract context window info
@@ -43,7 +44,7 @@ def main():
     else:
         usage_str = f"{RED}No credentials{RESET}"
 
-    line = f"{BLUE}{model}{RESET} | {context_str} | {usage_str}"
+    line = f"{BLUE}{model}{RESET} | {context_str} | {usage_str} | Dir: {current_directory}"
 
     print(line)
 
