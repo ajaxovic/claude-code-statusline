@@ -29,8 +29,10 @@ def main():
         return
 
     # Extract fields
-    current_directory = data.get("cwd", "")
     model = data.get("model", {}).get("display_name", "")
+
+    # Extract context window info
+    context_str = format_context(data)
 
     # Fetch usage from API
     access_token = get_access_token()
@@ -41,7 +43,7 @@ def main():
     else:
         usage_str = f"{RED}No credentials{RESET}"
 
-    line = f"{BLUE}{model}{RESET} | {usage_str} | Dir: {current_directory}"
+    line = f"{BLUE}{model}{RESET} | {context_str} | {usage_str}"
 
     print(line)
 
@@ -127,6 +129,28 @@ def get_usage_color(percentage: float) -> str:
     elif percentage >= USAGE_THRESHOLD_MEDIUM:
         return YELLOW
     return GREEN
+
+
+def format_context(data: dict) -> str:
+    """Format context window used percentage."""
+    context_window = data.get("context_window", {})
+    used_pct = context_window.get("used_percentage")
+
+    if used_pct is None:
+        return f"Ctx: {YELLOW}N/A{RESET}"
+
+    color = get_context_color(used_pct)
+    return f"Ctx: {color}{used_pct}%{RESET}"
+
+
+def get_context_color(used_pct: float) -> str:
+    """Get color based on used context (high = bad)."""
+    if used_pct >= USAGE_THRESHOLD_HIGH:
+        return RED
+    elif used_pct >= USAGE_THRESHOLD_MEDIUM:
+        return YELLOW
+    return GREEN
+
 
 if __name__ == "__main__":
     main()
