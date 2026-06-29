@@ -5,6 +5,7 @@ import urllib.request
 import urllib.error
 import subprocess
 import platform
+import time
 from pathlib import Path
 
 # ANSI colors
@@ -19,6 +20,8 @@ USAGE_API_URL = "https://api.anthropic.com/api/oauth/usage"
 USAGE_THRESHOLD_HIGH = 80
 USAGE_THRESHOLD_MEDIUM = 50
 CREDENTIALS_PATH = Path.home() / ".claude" / ".credentials.json"
+CACHE_PATH = Path.home() / ".claude" / ".statusline_usage_cache.json"
+CACHE_TTL = 120  # seconds
 
 def main():
     try:
@@ -29,8 +32,10 @@ def main():
         return
 
     # Extract fields
-    current_directory = data.get("cwd", "")
     model = data.get("model", {}).get("display_name", "")
+
+    # Extract context window info
+    context_str = format_context(data)
 
     # Fetch usage from API
     access_token = get_access_token()
@@ -41,7 +46,7 @@ def main():
     else:
         usage_str = f"{RED}No credentials{RESET}"
 
-    line = f"{BLUE}{model}{RESET} | {usage_str} | Dir: {current_directory}"
+    line = f"{BLUE}{model}{RESET} | {context_str} | {usage_str}"
 
     print(line)
 
@@ -88,7 +93,14 @@ def get_access_token_linux() -> str | None:
 
 
 def fetch_usage(access_token: str) -> dict | None:
-    """Fetch usage data from Anthropic API."""
+    """Fetch usage data from Anthropic API, with file-based caching."""
+    try:
+        cache = json.loads(CACHE_PATH.read_text())
+        if time.time() - cache.get("ts", 0) < CACHE_TTL:
+            return cache.get("data")
+    except Exception:
+        pass
+
     try:
         req = urllib.request.Request(
             USAGE_API_URL,
@@ -99,8 +111,10 @@ def fetch_usage(access_token: str) -> dict | None:
             },
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
-            return json.loads(resp.read().decode())
-    except (urllib.error.URLError, json.JSONDecodeError, TimeoutError):
+            data = json.loads(resp.read().decode())
+        CACHE_PATH.write_text(json.dumps({"ts": time.time(), "data": data}))
+        return data
+    except Exception:
         return None
 
 
@@ -127,6 +141,28 @@ def get_usage_color(percentage: float) -> str:
     elif percentage >= USAGE_THRESHOLD_MEDIUM:
         return YELLOW
     return GREEN
+
+
+def format_context(data: dict) -> str:
+    """Format context window used percentage."""
+    context_window = data.get("context_window", {})
+    used_pct = context_window.get("used_percentage")
+
+    if used_pct is None:
+        return f"Ctx: {YELLOW}N/A{RESET}"
+
+    color = get_context_color(used_pct)
+    return f"Ctx: {color}{used_pct}%{RESET}"
+
+
+def get_context_color(used_pct: float) -> str:
+    """Get color based on used context (high = bad)."""
+    if used_pct >= USAGE_THRESHOLD_HIGH:
+        return RED
+    elif used_pct >= USAGE_THRESHOLD_MEDIUM:
+        return YELLOW
+    return GREEN
+
 
 if __name__ == "__main__":
     main()
